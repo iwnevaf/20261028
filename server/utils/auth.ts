@@ -14,7 +14,13 @@ export async function requireUser(event: H3Event): Promise<CurrentUser> {
     await clearUserSession(event)
     throw createError({ statusCode: 401, statusMessage: 'ログインしてください' })
   }
-  return { id: user.id, email: user.email, name: user.name, role: user.role }
+  const current: CurrentUser = { id: user.id, email: user.email, name: user.name, role: user.role }
+  // Cookie 内の表示用の値（role など）が DB と食い違っていれば更新する。判定には使わない
+  const cached = session.user
+  if (cached?.role !== current.role || cached?.name !== current.name || cached?.email !== current.email) {
+    await setUserSession(event, { user: current })
+  }
+  return current
 }
 
 export async function requireAdmin(event: H3Event): Promise<CurrentUser> {

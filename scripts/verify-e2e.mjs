@@ -466,6 +466,161 @@ async function main() {
   }, null, 2))
   info(`永続化確認用の記録を書き出しました: ${STATE_FILE}`)
   info('サーバーを再起動したあと `node scripts/verify-e2e.mjs --check-persist` を実行してください')
+
+  await accountChecks(admin, { S, mail, PW })
+}
+
+// ---------- role 変更・パスワード変更／再設定 ----------
+// 初期 admin（.env）の role・パスワードは変更しない。操作対象はすべてここで作る架空の利用者
+async function accountChecks(admin, { S, mail, PW }) {
+  const anon = new Client('anon')
+  const adminMe = (await admin.get('/api/auth/me')).data
+  const newUser = async (local, name) => {
+    const u = { email: mail(local), password: PW, name }
+    u.id = (await admin.post('/api/admin/users', u)).data?.id
+    return u
+  }
+  const setRole = (client, id, role) => client.req('PATCH', `/api/admin/users/${id}/role`, { json: { role } })
+  const page = async (client, path) => client.get(path, { redirect: 'manual' })
+  const redirectsTo = (res, to) => res.status >= 300 && res.status < 400 && new URL(res.location, BASE).pathname === to
+
+  group('role の変更（admin のみ）')
+  const carol = await newUser('carol', 'テスト昇格C')
+  const dave = await newUser('dave', 'テスト登録D')
+  check('確認用の利用者を2名追加できる', carol.id && dave.id)
+  const uc = new Client('carol')
+  const ud = new Client('dave')
+  await uc.login(carol.email, carol.password)
+  await ud.login(dave.email, dave.password)
+
+  // dave が2社分の名刺を登録し、carol には1社分の企業許可だけを付与する
+  const coX = `権限確認商事${S}`
+  const coY = `権限確認工業${S}`
+  const cx = (await registerCard(ud, { name: `許可内七郎${S}`, companyName: coX })).data?.id
+  const cy = (await registerCard(ud, { name: `許可外八郎${S}`, companyName: coY })).data?.id
+  const companyX = (await admin.get(`/api/cards/${cx}`)).data?.companyId
+  const gC = (await admin.post(`/api/admin/users/${carol.id}/grants`, { type: 'company', companyId: companyX })).data?.id
+  const seen = async client => ids((await client.get('/api/cards')).data)
+  let v = await seen(uc)
+  check('昇格前: user の carol は許可された企業の名刺だけ見える', v.includes(cx) && !v.includes(cy), JSON.stringify(v))
+  let r = await uc.get('/api/admin/users')
+  check('昇格前: carol は admin API で 403', r.status === 403, `status=${r.status}`)
+
+  r = await setRole(ud, carol.id, 'admin')
+  check('user は他人の role を変更できない（403）', r.status === 403, `status=${r.status}`)
+  r = await setRole(ud, dave.id, 'admin')
+  check('user は自分の role を変更できない（403）', r.status === 403, `status=${r.status}`)
+  r = await setRole(anon, carol.id, 'admin')
+  check('未ログインは role 変更 API で 401', r.status === 401, `status=${r.status}`)
+  r = await setRole(admin, carol.id, 'superuser')
+  check('admin / user 以外の role は 400', r.status === 400, `status=${r.status}`)
+  r = await setRole(admin, 99999999, 'admin')
+  check('存在しない利用者の role 変更は 404', r.status === 404, `status=${r.status}`)
+  r = await setRole(admin, adminMe.id, 'user')
+  check('admin は自分の role を変更できない（400）', r.status === 400, `status=${r.status}`)
+  r = await admin.get('/api/auth/me')
+  check('自分の role 変更の失敗後も admin のまま', r.status === 200 && r.data.role === 'admin')
+
+  r = await setRole(admin, carol.id, 'admin')
+  check('admin は user を admin に昇格できる', r.status === 200 && r.data.role === 'admin', `status=${r.status}`)
+  r = await uc.get('/api/admin/users')
+  check('昇格は即時反映: 昇格前からのセッションで admin API を呼べる', r.status === 200, `status=${r.status}`)
+  v = await seen(uc)
+  check('昇格後: 許可外の名刺も含め全件見える', v.includes(cx) && v.includes(cy), JSON.stringify(v))
+  r = await uc.get(`/api/cards/${cy}`)
+  check('昇格後: 許可外の名刺の詳細も取得できる', r.status === 200, `status=${r.status}`)
+  r = await uc.get('/api/auth/me')
+  check('昇格後: /api/auth/me の role が admin', r.data?.role === 'admin')
+  r = await page(uc, '/admin/users')
+  check('昇格後: 同じセッションで /admin/users 画面を開ける（Cookie 内の古い role で弾かれない）', r.status === 200 && r.data.includes('利用者の追加'), `status=${r.status} location=${r.location}`)
+  r = await admin.get(`/api/admin/users/${carol.id}/grants`)
+  check('昇格しても付与済みの閲覧許可は DB に残る', r.status === 200 && r.data.grants.some(g => g.id === gC))
+
+  r = await setRole(admin, carol.id, 'user')
+  check('admin は他の admin を user に戻せる', r.status === 200 && r.data.role === 'user', `status=${r.status}`)
+  r = await uc.get('/api/admin/users')
+  check('降格は即時反映: 同じセッションでも admin API は 403', r.status === 403, `status=${r.status}`)
+  r = await uc.get(`/api/cards/${cy}`)
+  check('降格後: 許可外の名刺は 404', r.status === 404, `status=${r.status}`)
+  v = await seen(uc)
+  check('降格後: 残っていた閲覧許可が再び効く', v.includes(cx) && !v.includes(cy), JSON.stringify(v))
+  r = await uc.get('/api/auth/me')
+  check('降格後: /api/auth/me の role が user', r.data?.role === 'user')
+  r = await page(uc, '/admin/users')
+  check('降格後: 同じセッションで /admin/users を開くと / へリダイレクト', redirectsTo(r, '/'), `status=${r.status} location=${r.location}`)
+
+  // 最後の admin の降格: API を呼べるのは admin だけなので、admin が1人なら対象は必ず呼び出し元自身になり、
+  // 上の「自分の role は変更できない（400）」で拒否される。同時操作で0人になるケースはトランザクション内の
+  // admin 数の確認で防いでおり、HTTP からは決定的に再現できないため判定ロジックを tests/account.test.ts で確認する
+  const admins = ((await admin.get('/api/admin/users')).data ?? []).filter(u => u.role === 'admin')
+  check('role 変更の確認後も admin が1人以上いる', admins.some(u => u.id === adminMe.id))
+  info(`現在の admin は ${admins.length} 人。最後の admin を降格できない判定はユニットテストで確認`)
+
+  group('パスワード変更（本人）')
+  const uc2 = new Client('carol-2')
+  await uc2.login(carol.email, carol.password)
+  const changePw = (client, currentPassword, newPassword) => client.post('/api/auth/password', { currentPassword, newPassword })
+  const PW2 = `${PW}-new`
+  r = await changePw(uc, `${carol.password}-wrong`, PW2)
+  check('現在のパスワードが誤っていると 400（日本語メッセージ）', r.status === 400 && /パスワード/.test(r.data?.statusMessage ?? ''), `status=${r.status}`)
+  r = await changePw(uc, carol.password, 'short')
+  check('8文字未満の新しいパスワードは 400', r.status === 400, `status=${r.status}`)
+  r = await changePw(uc, carol.password, carol.password)
+  check('現在と同じパスワードへの変更は 400', r.status === 400, `status=${r.status}`)
+  r = await changePw(anon, carol.password, PW2)
+  check('未ログインはパスワード変更 API で 401', r.status === 401, `status=${r.status}`)
+  r = await uc2.get('/api/auth/me')
+  check('失敗した変更では他のセッションは失効しない', r.status === 200, `status=${r.status}`)
+
+  r = await changePw(uc, carol.password, PW2)
+  check('パスワードを変更できる', r.status === 200, `status=${r.status}`)
+  r = await uc.get('/api/auth/me')
+  check('変更したセッションはログインしたまま', r.status === 200 && r.data.id === carol.id, `status=${r.status}`)
+  r = await uc.get('/api/cards')
+  check('変更したセッションで引き続き API を呼べる', r.status === 200, `status=${r.status}`)
+  r = await uc2.get('/api/auth/me')
+  check('同じ利用者の他のセッションは 401', r.status === 401, `status=${r.status}`)
+  r = await new Client('carol-old').login(carol.email, carol.password)
+  check('古いパスワードではログインできない', r.status === 401, `status=${r.status}`)
+  r = await new Client('carol-new').login(carol.email, PW2)
+  check('新しいパスワードでログインできる', r.status === 200, `status=${r.status}`)
+  carol.password = PW2
+
+  group('パスワード再設定（admin による他の利用者）')
+  const ud2 = new Client('dave-2')
+  await ud2.login(dave.email, dave.password)
+  const resetPw = (client, id, newPassword) => client.post(`/api/admin/users/${id}/password`, { newPassword })
+  const PW3 = `${PW}-reset`
+  r = await resetPw(ud, carol.id, PW3)
+  check('user は他人のパスワードを再設定できない（403）', r.status === 403, `status=${r.status}`)
+  r = await resetPw(anon, dave.id, PW3)
+  check('未ログインはパスワード再設定 API で 401', r.status === 401, `status=${r.status}`)
+  // 自分への再設定は拒否される。万一通っても admin のパスワードが変わらないよう8文字未満を送る
+  r = await resetPw(admin, adminMe.id, 'x')
+  check('admin は自分のパスワードを再設定 API で変更できない（400）', r.status === 400 && /アカウント設定/.test(r.data?.statusMessage ?? ''), `status=${r.status}`)
+  r = await resetPw(admin, dave.id, 'short')
+  check('8文字未満の再設定パスワードは 400', r.status === 400, `status=${r.status}`)
+  r = await resetPw(admin, 99999999, PW3)
+  check('存在しない利用者の再設定は 404', r.status === 404, `status=${r.status}`)
+  r = await ud.get('/api/auth/me')
+  check('失敗した再設定では対象のセッションは失効しない', r.status === 200, `status=${r.status}`)
+
+  r = await resetPw(admin, dave.id, PW3)
+  check('admin は他の利用者のパスワードを再設定できる', r.status === 200, `status=${r.status}`)
+  r = await ud.get('/api/auth/me')
+  const r2 = await ud2.get('/api/cards')
+  check('再設定で対象の既存セッションはすべて 401', r.status === 401 && r2.status === 401, `status=${r.status}/${r2.status}`)
+  r = await new Client('dave-old').login(dave.email, dave.password)
+  check('再設定後は古いパスワードでログインできない', r.status === 401, `status=${r.status}`)
+  r = await new Client('dave-new').login(dave.email, PW3)
+  check('再設定したパスワードでログインできる', r.status === 200 && r.data.role === 'user', `status=${r.status}`)
+  r = await admin.get('/api/auth/me')
+  check('再設定した admin 自身のセッションは影響を受けない', r.status === 200, `status=${r.status}`)
+
+  r = await page(uc, '/account')
+  check('/account にアカウント設定（パスワード変更）が表示される', r.status === 200 && r.data.includes('アカウント設定') && r.data.includes('現在のパスワード'), `status=${r.status}`)
+  r = await page(anon, '/account')
+  check('未ログインで /account は /login へリダイレクト', redirectsTo(r, '/login'), `status=${r.status} location=${r.location}`)
 }
 
 try {
