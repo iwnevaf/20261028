@@ -1,0 +1,31 @@
+# 課題資料・提供画像（個人情報を含むため公開しない）
+*.pdf
+*.zip
+images/
+expected/
+
+# 実行時データ（DB・アップロード画像）
+data/
+
+# 環境変数
+.env
+.env.*
+!.env.example
+
+# Nuxt / Node
+node_modules/
+.nuxt/
+.output/
+.data/
+.nitro/
+.cache/
+dist/
+coverage/
+
+# ログ・OS・エディタ
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
