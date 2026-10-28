@@ -466,6 +466,117 @@ async function main() {
   }, null, 2))
   info(`永続化確認用の記録を書き出しました: ${STATE_FILE}`)
   info('サーバーを再起動したあと `node scripts/verify-e2e.mjs --check-persist` を実行してください')
+
+  await checkEditDelete({ S, mail, PW, admin, anon })
+}
+
+// ---------- 名刺の編集・削除（登録者と admin のみ） ----------
+// 永続化確認用のデータには触れないよう、専用の利用者・名刺を作って確認する
+async function checkEditDelete({ S, mail, PW, admin, anon }) {
+  group('名刺の編集・削除（登録者と admin のみ）')
+  const mk = async (local, name) => {
+    const u = { email: mail(local), password: PW, name }
+    u.id = (await admin.post('/api/admin/users', u)).data?.id
+    const c = new Client(local)
+    await c.login(u.email, u.password)
+    return { ...u, client: c }
+  }
+  const owner = await mk('editor', 'テスト編集者C')
+  const watcher = await mk('watcher', 'テスト閲覧者D')
+  const outsider = await mk('outsider', 'テスト部外者E')
+  const coE1 = `編集前商事${S}`
+  const coE2 = `編集後物産${S}`
+
+  const reg = async (client, fields) => (await registerCard(client, fields, PNG, 'edit.png', 'image/png')).data?.id
+  const base = { name: `編集七郎${S}`, companyName: coE1, department: '総務部', title: '主任', email: mail('nanaro'), phone: '000-1111-2222', address: '架空県架空市4-5-6', website: 'https://example.test/a' }
+  const cardId = await reg(owner.client, base)
+  const otherId = await reg(owner.client, { name: `削除八郎${S}`, companyName: coE1 })
+  const adminDelId = await reg(owner.client, { name: `削除九郎${S}`, companyName: coE1 })
+  check('編集・削除用の名刺を登録できる', cardId && otherId && adminDelId)
+
+  // watcher には編集前の会社の企業許可を与える（閲覧のみ）
+  const companyE1 = (await admin.get(`/api/cards/${cardId}`)).data?.companyId
+  const gWatch = (await admin.post(`/api/admin/users/${watcher.id}/grants`, { type: 'company', companyId: companyE1 })).data?.id
+  check('閲覧者に企業の許可を付与できる', !!gWatch)
+
+  let r = await owner.client.get(`/api/cards/${cardId}`)
+  check('登録者の詳細 API は canEdit=true', r.status === 200 && r.data.canEdit === true, `canEdit=${r.data?.canEdit}`)
+  r = await watcher.client.get(`/api/cards/${cardId}`)
+  check('企業許可で見えるだけの利用者の詳細 API は canEdit=false', r.status === 200 && r.data.canEdit === false, `status=${r.status} canEdit=${r.data?.canEdit}`)
+  r = await admin.get(`/api/cards/${cardId}`)
+  check('admin の詳細 API は canEdit=true', r.status === 200 && r.data.canEdit === true)
+  r = await watcher.client.get(`/api/cards?q=${encodeURIComponent(`編集七郎${S}`)}`)
+  check('一覧 API の各行にも canEdit が付く', Array.isArray(r.data) && r.data.length === 1 && r.data[0].canEdit === false)
+
+  // 登録者による編集
+  const edited = { ...base, title: '課長', phone: '000-3333-4444', address: '架空県見本市7-8-9', website: 'https://example.test/b' }
+  r = await owner.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, createdBy: watcher.id, imagePath: '../evil.png' } })
+  check('登録者は名刺を編集できる', r.status === 200, `status=${r.status}`)
+  let d = (await admin.get(`/api/cards/${cardId}`)).data
+  check('編集した項目が反映される', d?.title === '課長' && d?.phone === '000-3333-4444' && d?.address === '架空県見本市7-8-9' && d?.website === 'https://example.test/b')
+  check('createdBy を送っても登録者は変わらない', d?.createdBy === owner.id && d?.createdByEmail === owner.email, `createdBy=${d?.createdBy}`)
+  r = await owner.client.get(`/api/cards/${cardId}/image`)
+  check('編集後も元画像はそのまま取得できる', r.status === 200 && Buffer.compare(r.data, PNG) === 0, `status=${r.status}`)
+
+  // 入力検証・権限
+  r = await owner.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, name: '' } })
+  check('氏名を空にする編集は 400', r.status === 400, `status=${r.status}`)
+  r = await owner.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, name: '　 ' } })
+  check('氏名を空白のみにする編集は 400', r.status === 400, `status=${r.status}`)
+  r = await watcher.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, title: '改ざん' } })
+  check('企業許可で見えるだけの利用者は編集できない（403）', r.status === 403, `status=${r.status}`)
+  r = await watcher.client.del(`/api/cards/${cardId}`)
+  check('企業許可で見えるだけの利用者は削除できない（403）', r.status === 403, `status=${r.status}`)
+  r = await outsider.client.req('PATCH', `/api/cards/${cardId}`, { json: edited })
+  check('閲覧権限のない利用者の編集は 404', r.status === 404, `status=${r.status}`)
+  r = await outsider.client.del(`/api/cards/${cardId}`)
+  check('閲覧権限のない利用者の削除は 404', r.status === 404, `status=${r.status}`)
+  r = await outsider.client.req('PATCH', '/api/cards/99999999', { json: edited })
+  check('存在しない名刺の編集も同じ 404', r.status === 404, `status=${r.status}`)
+  r = await anon.req('PATCH', `/api/cards/${cardId}`, { json: edited })
+  check('未ログインの編集は 401', r.status === 401, `status=${r.status}`)
+  r = await anon.del(`/api/cards/${cardId}`)
+  check('未ログインの削除は 401', r.status === 401, `status=${r.status}`)
+  d = (await admin.get(`/api/cards/${cardId}`)).data
+  check('拒否された編集は反映されていない', d?.name === base.name && d?.title === '課長')
+
+  // 会社名の変更で企業許可の対象が移る
+  const watcherSees = async () => (await watcher.client.get(`/api/cards/${cardId}`)).status === 200
+  r = await owner.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, companyName: coE2 } })
+  d = (await admin.get(`/api/cards/${cardId}`)).data
+  check('会社名を変更すると別の企業 ID に紐付く', r.status === 200 && d?.companyId && d.companyId !== companyE1)
+  check('会社名の変更で元の企業許可の対象から外れる', await watcherSees() === false)
+  r = await owner.client.req('PATCH', `/api/cards/${cardId}`, { json: { ...edited, companyName: ` ${coE1.replace('商事', '商事　')}` } })
+  d = (await admin.get(`/api/cards/${cardId}`)).data
+  check('表記揺れのある会社名に戻すと元の企業 ID に紐付く', r.status === 200 && d?.companyId === companyE1)
+  check('元の会社名に戻すと企業許可で再び見える', await watcherSees() === true)
+
+  // admin による他人の名刺の編集・削除
+  r = await admin.req('PATCH', `/api/cards/${otherId}`, { json: { name: `削除八郎${S}`, companyName: coE1, title: '管理者が修正' } })
+  d = (await admin.get(`/api/cards/${otherId}`)).data
+  check('admin は他人の名刺を編集できる（登録者は変わらない）', r.status === 200 && d?.title === '管理者が修正' && d?.createdBy === owner.id, `status=${r.status}`)
+  r = await admin.del(`/api/cards/${adminDelId}`)
+  check('admin は他人の名刺を削除できる', r.status === 200, `status=${r.status}`)
+  r = await owner.client.get(`/api/cards/${adminDelId}`)
+  check('admin が削除した名刺は登録者からも 404', r.status === 404, `status=${r.status}`)
+
+  // 登録者による削除
+  r = await owner.client.del(`/api/cards/${cardId}`)
+  check('登録者は名刺を削除できる', r.status === 200, `status=${r.status}`)
+  r = await owner.client.get(`/api/cards/${cardId}`)
+  check('削除後は詳細 API が 404', r.status === 404, `status=${r.status}`)
+  r = await admin.get(`/api/cards/${cardId}/image`)
+  check('削除後は元画像も 404（admin でも取得できない）', r.status === 404, `status=${r.status}`)
+  const l = ids((await admin.get(`/api/cards?q=${encodeURIComponent(S)}`)).data)
+  check('削除した名刺は一覧に出ない', !l.includes(cardId) && !l.includes(adminDelId) && l.includes(otherId))
+  r = await owner.client.del(`/api/cards/${cardId}`)
+  check('削除済みの名刺をもう一度削除すると 404', r.status === 404, `status=${r.status}`)
+
+  // 画面
+  r = await owner.client.get(`/cards/${otherId}`, { redirect: 'manual' })
+  check('登録者の /cards/:id に編集・削除ボタンが表示される', r.status === 200 && r.data.includes('>編集</button>') && r.data.includes('>削除</button>'), `status=${r.status}`)
+  r = await watcher.client.get(`/cards/${otherId}`, { redirect: 'manual' })
+  check('閲覧のみの利用者の /cards/:id には編集・削除ボタンが出ない', r.status === 200 && r.data.includes(`削除八郎${S}`) && !r.data.includes('>編集</button>') && !r.data.includes('>削除</button>'), `status=${r.status}`)
 }
 
 try {

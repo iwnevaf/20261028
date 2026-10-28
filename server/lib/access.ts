@@ -37,6 +37,11 @@ export function canView(scope: AccessScope, card: CardRef): boolean {
     || scope.personIds.includes(card.personId)
 }
 
+// 編集・削除は登録者本人と admin のみ。閲覧許可だけでは編集できない
+export function canEdit(viewer: Viewer, card: Pick<CardRef, 'createdBy'>): boolean {
+  return viewer.role === 'admin' || card.createdBy === viewer.id
+}
+
 // canView と同じ条件の SQL。undefined は「全件」
 export function scopeWhere(scope: AccessScope): SQL | undefined {
   if (scope.all) return undefined
