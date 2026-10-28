@@ -3,6 +3,7 @@ type U = { id: number, email: string, name: string, role: 'admin' | 'user' }
 const { data: users, refresh } = await useFetch<U[]>('/api/admin/users')
 
 const form = reactive({ email: '', name: '', password: '' })
+const showPassword = ref(false)
 const error = ref('')
 const message = ref('')
 
@@ -13,6 +14,7 @@ async function addUser() {
     await $fetch('/api/admin/users', { method: 'POST', body: form })
     message.value = `${form.email} を追加しました`
     Object.assign(form, { email: '', name: '', password: '' })
+    showPassword.value = false
     await refresh()
   }
   catch (e) {
@@ -28,7 +30,14 @@ async function addUser() {
       <form class="row" @submit.prevent="addUser">
         <label>メールアドレス<input v-model="form.email" type="email" required></label>
         <label>表示名<input v-model="form.name"></label>
-        <label>初期パスワード（8文字以上）<input v-model="form.password" type="text" required minlength="8"></label>
+        <label>初期パスワード（8文字以上）
+          <span class="password">
+            <input v-model="form.password" :type="showPassword ? 'text' : 'password'" required minlength="8" autocomplete="new-password">
+            <button type="button" class="secondary" :aria-pressed="showPassword" @click="showPassword = !showPassword">
+              {{ showPassword ? '隠す' : '表示' }}
+            </button>
+          </span>
+        </label>
         <button type="submit">追加</button>
       </form>
       <p v-if="error" class="error">{{ error }}</p>
@@ -50,3 +59,9 @@ async function addUser() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.password { display: flex; gap: 6px; }
+.password input { flex: 1; }
+.password button { padding: 8px 12px; white-space: nowrap; }
+</style>
