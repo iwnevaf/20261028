@@ -18,7 +18,4 @@ export default defineNuxtConfig({
     initialAdminPassword: '',
     initialAdminName: '',
   },
-  nitro: {
-    experimental: { tasks: false },
-  },
 })
