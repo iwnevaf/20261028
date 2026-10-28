@@ -29,3 +29,6 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Claude Code の作業用 worktree
+.claude/worktrees/
