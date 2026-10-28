@@ -12,6 +12,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@google/genai": "^2.31.0",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
     "nuxt": "^3.21.11",
