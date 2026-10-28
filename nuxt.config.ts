@@ -17,9 +17,11 @@ export default defineNuxtConfig({
     initialAdminEmail: '',
     initialAdminPassword: '',
     initialAdminName: '',
-    // AI 読み取り（NUXT_LLM_PROVIDER など）。現在は gemini のみ対応
+    // AI 読み取り（NUXT_LLM_PROVIDER など）。gemini（既定）または claude
     llmProvider: 'gemini',
     geminiApiKey: '',
     geminiModel: 'gemini-3.8-flash',
+    anthropicApiKey: '',
+    anthropicModel: 'claude-opus-5-5',
   },
 })
