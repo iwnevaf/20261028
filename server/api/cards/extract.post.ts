@@ -22,6 +22,8 @@ export default defineEventHandler(async (event) => {
       llmProvider: config.llmProvider,
       geminiApiKey: config.geminiApiKey,
       geminiModel: config.geminiModel,
+      anthropicApiKey: config.anthropicApiKey,
+      anthropicModel: config.anthropicModel,
     }, controller.signal)
   }
   catch (e) {

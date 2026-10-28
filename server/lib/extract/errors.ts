@@ -1,8 +1,10 @@
-export type ExtractErrorKind = 'missing_key' | 'unsupported_provider' | 'timeout' | 'provider' | 'invalid_output'
+export type ExtractErrorKind = 'missing_key' | 'invalid_key' | 'unsupported_provider' | 'rate_limited' | 'timeout' | 'provider' | 'invalid_output'
 
 const MESSAGES: Record<ExtractErrorKind, string> = {
   missing_key: 'AI読み取りの設定がありません（APIキー未設定）',
+  invalid_key: 'AI読み取りの設定が正しくありません（APIキーが無効です）',
   unsupported_provider: 'AI読み取りの設定が正しくありません',
+  rate_limited: 'AI読み取りが混み合っています。しばらくしてからお試しください',
   timeout: 'AI読み取りがタイムアウトしました。もう一度お試しください',
   provider: 'AI読み取りに失敗しました。もう一度お試しください',
   invalid_output: 'AI読み取りの結果を解釈できませんでした。もう一度お試しください',
@@ -17,6 +19,6 @@ export class ExtractError extends Error {
     super(MESSAGES[kind], options)
     this.name = 'ExtractError'
     this.kind = kind
-    this.statusCode = kind === 'missing_key' || kind === 'unsupported_provider' ? 503 : 502
+    this.statusCode = kind === 'missing_key' || kind === 'invalid_key' || kind === 'unsupported_provider' || kind === 'rate_limited' ? 503 : 502
   }
 }

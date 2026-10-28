@@ -22,9 +22,11 @@ npm run dev
 | `NUXT_INITIAL_ADMIN_PASSWORD` | 初期 admin のパスワード |
 | `NUXT_INITIAL_ADMIN_NAME` | 初期 admin の表示名（省略時 `admin`） |
 | `NUXT_SESSION_PASSWORD` | セッション暗号化キー（32文字以上）。開発時は未設定なら自動生成 |
-| `NUXT_LLM_PROVIDER` | AI 読み取りのプロバイダ。現在は `gemini` のみ対応（省略時 `gemini`） |
+| `NUXT_LLM_PROVIDER` | AI 読み取りのプロバイダ。`gemini` または `claude`（省略時 `gemini`） |
 | `NUXT_GEMINI_API_KEY` | Gemini API キー。未設定でも起動でき、AI 読み取りはエラー表示になり手入力で登録できる |
 | `NUXT_GEMINI_MODEL` | Gemini のモデル名（省略時 `gemini-3.8-flash`） |
+| `NUXT_ANTHROPIC_API_KEY` | Anthropic API キー（`NUXT_LLM_PROVIDER=claude` のとき使用）。未設定だと AI 読み取りはエラー表示になり手入力で登録できる |
+| `NUXT_ANTHROPIC_MODEL` | Claude のモデル名（省略時 `claude-opus-5-5`） |
 
 - データは `./data` に保存されます（SQLite DB `data/app.db` と元画像 `data/uploads/`）。再起動後も保持されます。`data/` は git 管理外です。
 - DB マイグレーションは起動時に自動適用されます。
@@ -44,8 +46,9 @@ npm run dev
 
 - **Gemini `gemini-3.8-flash`**（Google Gen AI SDK `@google/genai` の Interactions API、thinking level `low`）。`NUXT_GEMINI_MODEL` で変更できます。
   - 選定理由: LLM プロバイダは未定のため、開発中は個人キーで使える Gemini で検証しています。当初は低コストの `gemini-3.5-flash-lite` を既定にしていましたが、端が切れて読めないメールアドレスを補完してしまう（推測で補完しない要件に反する）ことがあり、プロンプトでの対策だけでは安定しませんでした。`gemini-3.8-flash` では提供画像10枚×2回の評価で補完が0件だったため、こちらを既定にしています（名刺1枚あたりの費用はどちらも1円未満）。
-- 構成（`server/lib/extract/`）: プロンプト・JSON スキーマ・出力の検証はプロバイダ共通（`schema.ts`）、プロバイダ固有の呼び出しは1ファイル（`gemini.ts`）に閉じ込め、`index.ts` が `NUXT_LLM_PROVIDER` で切り替えます。
-- **Claude 層は未実装**です。追加する場合は `claude.ts` を作り、`index.ts` に分岐を1つ足す想定です。
+- **Claude `claude-opus-5-5`**（公式 SDK `@anthropic-ai/sdk` の Messages API、構造化出力 `output_config.format`、effort `low`）。`NUXT_LLM_PROVIDER=claude` と `NUXT_ANTHROPIC_API_KEY` を設定すると切り替わり、`NUXT_ANTHROPIC_MODEL` でモデルを変更できます。安全分類器による拒否時はサーバー側フォールバック（`fallbacks: "default"`）で既定の代替モデルに再実行させ、それでも拒否された場合は読み取り失敗として表示します。
+  - Anthropic の API キーが手元になかったため、Claude 経路は SDK をモックしたユニットテスト（リクエストの形・出力の整形・拒否やエラーの扱い）でのみ確認しており、実 API での読み取りは未確認です。
+- 構成（`server/lib/extract/`）: プロンプト・JSON スキーマ・出力の検証はプロバイダ共通（`schema.ts`）、プロバイダ固有の呼び出しは1ファイルずつ（`gemini.ts` / `claude.ts`）に閉じ込め、`index.ts` が `NUXT_LLM_PROVIDER` で切り替えます（既定は Gemini）。
 - 推測・補完の防止:
   - プロンプトで「印刷されている文字だけを書き写す」「記載なし・読み取れない項目は空文字」「メールのドメインから Web サイトを作らない、記載のない郵便番号を補わない等の補完禁止」「表記は記載どおり」を指示しています。
   - 出力は JSON スキーマ（8項目すべて文字列・必須）で受け、サーバー側でも検証します（文字列以外・欠落は空欄、前後空白の除去、長さ制限、メールアドレス／URL の形でない値は空欄）。
@@ -188,7 +191,7 @@ E2E 合計: 通常実行 112 件 PASS / FAIL 0、再起動後の `--check-persis
 
 ## 制約・未実装・未確認の事項
 
-- AI による情報抽出は Gemini のみ実装。Claude 用の層は未実装（`server/lib/extract/` に1ファイル追加して切り替える構成）
+- Claude による情報抽出は、API キーがなかったためモックしたユニットテストでのみ確認（実 API での読み取り精度は未確認）
 - 部署と役職の境界が曖昧な名刺では、AI の振り分けが期待結果と異なることがある（確認画面で修正する前提）
 - 読めない部分の補完はプロンプトとモデル選定で評価上 0 件にしたが、LLM の出力は確率的なため完全には保証できない（確認画面で利用者が確認・修正する前提）
 - 名刺の編集・削除は未実装
