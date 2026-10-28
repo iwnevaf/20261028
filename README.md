@@ -43,7 +43,7 @@ npm run dev
 ## AI モデル
 
 - **Gemini `gemini-3.8-flash`**（Google Gen AI SDK `@google/genai` の Interactions API、thinking level `low`）。`NUXT_GEMINI_MODEL` で変更できます。
-  - 選定理由: LLM プロバイダは未定のため。
+  - 選定理由: LLM プロバイダは未定のため、開発中は個人キーで使える Gemini で検証しています。当初は低コストの `gemini-3.5-flash-lite` を既定にしていましたが、端が切れて読めないメールアドレスを補完してしまう（推測で補完しない要件に反する）ことがあり、プロンプトでの対策だけでは安定しませんでした。`gemini-3.8-flash` では提供画像10枚×2回の評価で補完が0件だったため、こちらを既定にしています（名刺1枚あたりの費用はどちらも1円未満）。
 - 構成（`server/lib/extract/`）: プロンプト・JSON スキーマ・出力の検証はプロバイダ共通（`schema.ts`）、プロバイダ固有の呼び出しは1ファイル（`gemini.ts`）に閉じ込め、`index.ts` が `NUXT_LLM_PROVIDER` で切り替えます。
 - **Claude 層は未実装**です。追加する場合は `claude.ts` を作り、`index.ts` に分岐を1つ足す想定です。
 - 推測・補完の防止:
