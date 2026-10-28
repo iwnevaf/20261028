@@ -16,9 +16,10 @@ async function logout() {
         <NuxtLink to="/">名刺一覧</NuxtLink>
         <NuxtLink to="/cards/new">名刺を登録</NuxtLink>
         <NuxtLink v-if="user?.role === 'admin'" to="/admin/users">利用者・閲覧許可</NuxtLink>
+        <NuxtLink to="/account">アカウント設定</NuxtLink>
       </nav>
       <div class="me">
-        <span>{{ user?.name || user?.email }}（{{ user?.role }}）</span>
+        <NuxtLink to="/account" title="アカウント設定（パスワード変更）">{{ user?.name || user?.email }}（{{ user?.role }}）</NuxtLink>
         <button class="secondary" @click="logout">ログアウト</button>
       </div>
     </header>
