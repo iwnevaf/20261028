@@ -12,6 +12,10 @@ type CardRow = {
 }
 
 const route = useRoute()
+// 詳細画面で削除したあとの完了メッセージ（1回だけ表示）
+const flash = useState<string>('cards-flash', () => '')
+const message = ref(flash.value)
+flash.value = ''
 const q = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const query = ref(q.value)
 
@@ -32,6 +36,7 @@ function clearSearch() {
 
 <template>
   <div>
+    <p v-if="message" class="success">{{ message }}</p>
     <div class="card">
       <h1>名刺一覧</h1>
       <form class="row" @submit.prevent="search">
@@ -76,4 +81,5 @@ function clearSearch() {
 
 <style scoped>
 .grow { flex: 1; min-width: 240px; }
+.success { color: #1a7f37; background: #dafbe1; border: 1px solid #aceebb; padding: 8px 12px; border-radius: 6px; }
 </style>

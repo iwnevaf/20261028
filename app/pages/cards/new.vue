@@ -1,30 +1,11 @@
 <script setup lang="ts">
+import type { CardFields as Fields } from '~/utils/card-fields'
+
 const ACCEPT = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 10 * 1024 * 1024
 
-type Fields = {
-  name: string
-  companyName: string
-  department: string
-  title: string
-  email: string
-  phone: string
-  address: string
-  website: string
-}
-const FIELD_DEFS: { key: keyof Fields, label: string, type?: string, required?: boolean }[] = [
-  { key: 'name', label: '氏名', required: true },
-  { key: 'companyName', label: '会社名' },
-  { key: 'department', label: '部署' },
-  { key: 'title', label: '役職' },
-  { key: 'email', label: 'メールアドレス', type: 'email' },
-  { key: 'phone', label: '電話番号', type: 'tel' },
-  { key: 'address', label: '住所' },
-  { key: 'website', label: 'Webサイト' },
-]
-
-const emptyFields = (): Fields => ({ name: '', companyName: '', department: '', title: '', email: '', phone: '', address: '', website: '' })
-const form = reactive<Fields>(emptyFields())
+const FIELD_DEFS = CARD_FIELD_DEFS
+const form = reactive<Fields>(emptyCardFields())
 
 const file = ref<File | null>(null)
 const previewUrl = ref('')

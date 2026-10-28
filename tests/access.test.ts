@@ -4,7 +4,7 @@ import { asc } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { accessScope, canView, scopeWhere, type CardRef, type Grant, type Viewer } from '../server/lib/access'
+import { accessScope, canEdit, canView, scopeWhere, type CardRef, type Grant, type Viewer } from '../server/lib/access'
 import * as schema from '../server/db/schema'
 
 // すべて架空のデータ
@@ -86,6 +86,32 @@ describe('accessScope / canView', () => {
   it('ID が null の不正な許可は無視される', () => {
     const broken: Grant = { type: 'company', companyId: null, departmentId: null, personId: null }
     expect(visible(viewer, [broken])).toEqual(['ownCard_companyB_person3'])
+  })
+})
+
+describe('canEdit', () => {
+  const editable = (v: Viewer) => allKeys.filter(k => canEdit(v, cardRefs[k]!))
+
+  it('admin は全名刺を編集・削除できる', () => {
+    expect(editable(admin)).toEqual(allKeys)
+  })
+
+  it('user は自分が登録した名刺のみ編集・削除できる', () => {
+    expect(editable(viewer)).toEqual(['ownCard_companyB_person3'])
+    expect(editable({ id: 3, role: 'user' })).toEqual(['companyA_salesA_person1', 'companyB_salesB_person2', 'noCompany_person4'])
+  })
+
+  it('閲覧許可で見えるだけの名刺は編集・削除できない', () => {
+    const grants = [grant('company', 1), grant('department', 2), grant('person', 4)]
+    const scope = accessScope(viewer, grants)
+    for (const key of ['companyA_salesA_person1', 'companyB_salesB_person2', 'noCompany_person4']) {
+      expect(canView(scope, cardRefs[key]!)).toBe(true)
+      expect(canEdit(viewer, cardRefs[key]!)).toBe(false)
+    }
+  })
+
+  it('同じ ID でも role が user なら他人の名刺は編集できない（role で判定）', () => {
+    expect(canEdit({ id: 1, role: 'user' }, cardRefs.companyA_salesA_person1!)).toBe(false)
   })
 })
 
