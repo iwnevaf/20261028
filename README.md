@@ -22,6 +22,9 @@ npm run dev
 | `NUXT_INITIAL_ADMIN_PASSWORD` | 初期 admin のパスワード |
 | `NUXT_INITIAL_ADMIN_NAME` | 初期 admin の表示名（省略時 `admin`） |
 | `NUXT_SESSION_PASSWORD` | セッション暗号化キー（32文字以上）。開発時は未設定なら自動生成 |
+| `NUXT_LLM_PROVIDER` | AI 読み取りのプロバイダ。現在は `gemini` のみ対応（省略時 `gemini`） |
+| `NUXT_GEMINI_API_KEY` | Gemini API キー。未設定でも起動でき、AI 読み取りはエラー表示になり手入力で登録できる |
+| `NUXT_GEMINI_MODEL` | Gemini のモデル名（省略時 `gemini-3.5-flash-lite`） |
 
 - データは `./data` に保存されます（SQLite DB `data/app.db` と元画像 `data/uploads/`）。再起動後も保持されます。`data/` は git 管理外です。
 - DB マイグレーションは起動時に自動適用されます。
@@ -39,7 +42,16 @@ npm run dev
 
 ## AI モデル
 
-未定（APIキー受領後に記載）
+- **Gemini `gemini-3.5-flash-lite`**（Google Gen AI SDK `@google/genai` の Interactions API、thinking level `low`）。`NUXT_GEMINI_MODEL` で変更できます。
+  - 選定理由: LLM プロバイダは採用担当者から提供予定で未定のため、開発中は個人キーで使える Gemini で検証しています。名刺の書き写しは高度な推論が不要なので、低コスト・低遅延の Flash-Lite を既定にしました。
+- 構成（`server/lib/extract/`）: プロンプト・JSON スキーマ・出力の検証はプロバイダ共通（`schema.ts`）、プロバイダ固有の呼び出しは1ファイル（`gemini.ts`）に閉じ込め、`index.ts` が `NUXT_LLM_PROVIDER` で切り替えます。
+- **Claude 層は未実装**です。追加する場合は `claude.ts` を作り、`index.ts` に分岐を1つ足す想定です。
+- 推測・補完の防止:
+  - プロンプトで「印刷されている文字だけを書き写す」「記載なし・読み取れない項目は空文字」「メールのドメインから Web サイトを作らない、記載のない郵便番号を補わない等の補完禁止」「表記は記載どおり」を指示しています。
+  - 出力は JSON スキーマ（8項目すべて文字列・必須）で受け、サーバー側でも検証します（文字列以外・欠落は空欄、前後空白の除去、長さ制限、メールアドレス／URL の形でない値は空欄）。
+- API キーはサーバー側の `runtimeConfig`（非 public）でのみ扱い、ブラウザーには渡しません。画像はプロバイダ側に保存させない設定（`store: false`）で送ります。
+- エラー時（キー未設定は 503、タイムアウト30秒・プロバイダエラー・解釈できない出力は 502）は画面に失敗を表示し、再読み取りまたは手入力で続行できます。
+- 実際の API 呼び出しは API キー受領後に確認予定です（現時点では SDK をモックしたユニットテストのみ）。
 
 ## 対応画像形式
 
