@@ -13,6 +13,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 401, statusMessage: 'メールアドレスまたはパスワードが正しくありません' })
   }
   const sessionUser = { id: user.id, email: user.email, name: user.name, role: user.role }
-  await replaceUserSession(event, { user: sessionUser })
+  await replaceUserSession(event, { user: sessionUser, secure: { sessionVersion: user.sessionVersion } })
   return sessionUser
 })

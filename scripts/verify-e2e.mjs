@@ -178,11 +178,14 @@ async function main() {
   check('ログアウト後は /api/auth/me が 401', r.status === 401, `status=${r.status}`)
   r = await tmp.get('/api/cards')
   check('ログアウト後は名刺一覧 API が 401', r.status === 401, `status=${r.status}`)
-  // 参考情報: ログアウト前の Cookie を再送した場合（封印 Cookie 方式のためサーバー側で失効させていない）
   const replay = new Client('replay')
   replay.cookies = stolen
   r = await replay.get('/api/auth/me')
-  info(`ログアウト前に控えた Cookie を再送した場合の /api/auth/me: ${r.status}`)
+  check('ログアウト前に控えた Cookie を再送しても 401（サーバー側で失効）', r.status === 401, `status=${r.status}`)
+  // ログアウトは同じ利用者の全セッションを失効させるため、admin は再ログインする
+  r = await admin.get('/api/auth/me')
+  check('ログアウトで同じ利用者の他のセッションも失効する', r.status === 401, `status=${r.status}`)
+  await admin.login(ADMIN_EMAIL, ADMIN_PASSWORD)
 
   // ===== 利用者の追加 =====
   group('利用者の追加（admin のみ）')

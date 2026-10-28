@@ -9,6 +9,8 @@ export const users = sqliteTable('users', {
   name: text('name').notNull().default(''),
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'user'] }).notNull().default('user'),
+  // ログアウト時に増やし、それ以前に発行したセッション Cookie を無効にする
+  sessionVersion: integer('session_version').notNull().default(0),
   createdAt: createdAt(),
 })
 

@@ -10,7 +10,7 @@ export async function requireUser(event: H3Event): Promise<CurrentUser> {
   if (typeof id !== 'number') throw createError({ statusCode: 401, statusMessage: 'ログインしてください' })
 
   const user = useDb().select().from(schema.users).where(eq(schema.users.id, id)).get()
-  if (!user) {
+  if (!user || session.secure?.sessionVersion !== user.sessionVersion) {
     await clearUserSession(event)
     throw createError({ statusCode: 401, statusMessage: 'ログインしてください' })
   }
