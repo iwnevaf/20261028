@@ -101,7 +101,7 @@ describe('extractCard', () => {
     expect(res).toEqual({ ...sample, website: '' })
     expect(ctor).toHaveBeenCalledWith({ apiKey: 'test-key' })
     const params = create.mock.calls[0]![0]
-    expect(params.model).toBe('gemini-3.5-flash-lite')
+    expect(params.model).toBe('gemini-3.8-flash')
     expect(params.store).toBe(false)
     expect(params.response_format).toMatchObject({ type: 'text', mime_type: 'application/json', schema: extractionJsonSchema })
     expect(params.input[1]).toEqual({ type: 'image', data: image.data.toString('base64'), mime_type: 'image/png' })

@@ -3,7 +3,7 @@ import { ExtractError } from './errors'
 import { extractionJsonSchema, SYSTEM_PROMPT, USER_PROMPT } from './schema'
 import type { ExtractImage } from './index'
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite'
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash'
 
 // Gemini Interactions API（@google/genai v2 の client.interactions.create）で構造化出力を得る
 export async function extractWithGemini(image: ExtractImage, opts: { apiKey: string, model?: string, signal?: AbortSignal }): Promise<unknown> {

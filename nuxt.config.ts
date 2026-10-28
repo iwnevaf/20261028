@@ -20,6 +20,6 @@ export default defineNuxtConfig({
     // AI 読み取り（NUXT_LLM_PROVIDER など）。現在は gemini のみ対応
     llmProvider: 'gemini',
     geminiApiKey: '',
-    geminiModel: 'gemini-3.5-flash-lite',
+    geminiModel: 'gemini-3.8-flash',
   },
 })
